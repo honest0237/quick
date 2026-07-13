@@ -70,7 +70,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(NSMenuItem.separator())
         }
 
-        menu.addItem(withTitle: "Quick 패널 열기/닫기  ⌥Q", action: #selector(togglePanel), keyEquivalent: "")
+        menu.addItem(withTitle: "Quick 패널 열기/닫기  \(QuickSettings.shared.toggleHotkey.label)", action: #selector(togglePanel), keyEquivalent: "")
         menu.addItem(NSMenuItem.separator())
 
         // 로그인 시 자동 실행
@@ -143,38 +143,44 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
-    // MARK: - 글로벌 단축키 (⌥Q)
+    // MARK: - 글로벌 단축키 (설정에서 변경 가능)
+
+    private var hotKeyHandlerInstalled = false
 
     private func registerGlobalHotKey() {
+        // 이벤트 핸들러는 앱당 한 번만 설치 (재등록 시 중복 설치 방지)
+        if !hotKeyHandlerInstalled {
+            var eventSpec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+            InstallEventHandler(GetApplicationEventTarget(), { (_, _, _) -> OSStatus in
+                Task { @MainActor in QuickPanelController.shared.toggle() }
+                return noErr
+            }, 1, &eventSpec, nil, nil)
+            hotKeyHandlerInstalled = true
+        }
+        installHotKey()
+    }
+
+    /// 설정된 단축키로 등록 (기존 것은 먼저 해제)
+    private func installHotKey() {
+        unregisterGlobalHotKey()
+
         var hotKeyID = EventHotKeyID()
         hotKeyID.signature = OSType(0x51554943) // "QUIC"
         hotKeyID.id = 1
 
-        // ⌥Q: optionKey = 0x0800, Q = kVK_ANSI_Q = 12
-        let status = RegisterEventHotKey(
-            UInt32(kVK_ANSI_Q),
-            UInt32(optionKey),
-            hotKeyID,
-            GetApplicationEventTarget(),
-            0,
-            &hotKeyRef
-        )
-
+        let hk = QuickSettings.shared.toggleHotkey
+        let status = RegisterEventHotKey(hk.keyCode, hk.modifiers, hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
         if status != noErr {
             NSLog("[Quick] 글로벌 단축키 등록 실패: %d", status)
-            return
+        } else {
+            NSLog("[Quick] 글로벌 단축키 등록: %@", hk.label)
         }
+    }
 
-        // 이벤트 핸들러
-        var eventSpec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        InstallEventHandler(GetApplicationEventTarget(), { (_, event, _) -> OSStatus in
-            Task { @MainActor in
-                QuickPanelController.shared.toggle()
-            }
-            return noErr
-        }, 1, &eventSpec, nil, nil)
-
-        NSLog("[Quick] 글로벌 단축키 등록: ⌥Q")
+    /// 설정 변경 시 호출 — 단축키 재등록 + 메뉴 라벨 갱신
+    func reregisterGlobalHotKey() {
+        installHotKey()
+        rebuildMenu()
     }
 
     private func unregisterGlobalHotKey() {

@@ -223,6 +223,7 @@ struct QuickPanelView: View {
     @ObservedObject var store = ScreenshotStore.shared
     @ObservedObject var updater = UpdateService.shared
     @State private var showSettings = false
+    @State private var showChangelog = false
     @State private var searchText = ""
     @State private var searchResults: [SearchResult] = []
     @State private var isSearching = false
@@ -246,10 +247,20 @@ struct QuickPanelView: View {
                 Text("Quick")
                     .font(.title2)
                     .fontWeight(.bold)
-                Text(appVersion)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                    .padding(.top, 6)
+                Button(action: {
+                    if updater.releases.isEmpty { updater.fetchReleases() }
+                    showChangelog.toggle()
+                }) {
+                    Text(appVersion)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("패치 노트 보기")
+                .padding(.top, 6)
+                .popover(isPresented: $showChangelog, arrowEdge: .bottom) {
+                    ChangelogView()
+                }
                 if updater.updateAvailable, let latest = updater.latestVersion {
                     Button(action: { updater.openReleasePage() }) {
                         Text("⬆ v\(latest)")
@@ -480,6 +491,7 @@ struct QuickPanelView: View {
 
 struct SettingsPopover: View {
     @ObservedObject private var app = AppSettings.shared
+    @State private var hotkey: ToggleHotkey = QuickSettings.shared.toggleHotkey
     @State private var direction: PanelDirection = QuickSettings.shared.panelDirection
     @State private var autoHide: Double = QuickSettings.shared.autoHideSeconds
     @State private var saveDir: String = AppSettings.shared.saveDirectory
@@ -523,6 +535,19 @@ struct SettingsPopover: View {
             Divider()
 
             // 패널
+            HStack {
+                Text("열기 단축키").font(.caption).foregroundColor(.secondary)
+                Spacer()
+                Picker("", selection: $hotkey) {
+                    ForEach(ToggleHotkey.allCases) { hk in Text(hk.label).tag(hk) }
+                }
+                .labelsHidden().frame(width: 130)
+                .onChange(of: hotkey) { newValue in
+                    QuickSettings.shared.toggleHotkey = newValue
+                    globalDelegate?.reregisterGlobalHotKey()
+                }
+            }
+
             Text("슬라이드 방향").font(.caption).foregroundColor(.secondary)
             Picker("방향", selection: $direction) {
                 ForEach(PanelDirection.allCases, id: \.self) { dir in
@@ -546,7 +571,7 @@ struct SettingsPopover: View {
             }
 
             Divider()
-            Text("단축키: ⌥Q 열기/닫기 · Esc 닫기 · 더블클릭 편집")
+            Text("\(hotkey.label) 열기/닫기 · Esc 닫기 · 더블클릭 편집")
                 .font(.caption2).foregroundColor(.secondary)
         }
         .padding(16)
@@ -564,6 +589,82 @@ struct SettingsPopover: View {
             app.saveDirectory = url.path
             saveDir = url.path
         }
+    }
+}
+
+// MARK: - 패치 노트(체인지로그)
+
+struct ChangelogView: View {
+    @ObservedObject var updater = UpdateService.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("패치 노트").font(.headline)
+                Spacer()
+                Button("GitHub") {
+                    NSWorkspace.shared.open(URL(string: "https://github.com/honest0237/quick/releases")!)
+                }
+                .controlSize(.small)
+            }
+            .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 8)
+
+            Divider()
+
+            if updater.isLoadingReleases && updater.releases.isEmpty {
+                HStack { Spacer(); ProgressView().scaleEffect(0.8); Spacer() }.padding(24)
+            } else if updater.releases.isEmpty {
+                Text("릴리스 정보를 불러올 수 없습니다.\n인터넷 연결을 확인하세요.")
+                    .font(.caption).foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity).padding(24)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        ForEach(updater.releases) { rel in
+                            VStack(alignment: .leading, spacing: 5) {
+                                HStack(spacing: 6) {
+                                    Text("v\(rel.version)").font(.subheadline).fontWeight(.bold)
+                                    if rel.version == updater.currentVersion {
+                                        Text("현재").font(.caption2)
+                                            .padding(.horizontal, 5).padding(.vertical, 1)
+                                            .background(Color.accentColor.opacity(0.2)).cornerRadius(4)
+                                    }
+                                    Spacer()
+                                    Text(rel.date).font(.caption2).foregroundColor(.secondary)
+                                }
+                                Text(rendered(rel.notes))
+                                    .font(.caption)
+                                    .textSelection(.enabled)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                    .padding(14)
+                }
+            }
+        }
+        .frame(width: 330, height: 400)
+    }
+
+    /// 마크다운을 팝오버에 맞게 정리(제목 #·코드펜스 ``` 제거) 후 렌더
+    private func rendered(_ notes: String) -> AttributedString {
+        let cleaned = notes
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .compactMap { line -> String? in
+                var l = String(line)
+                if l.trimmingCharacters(in: .whitespaces) == "```" { return nil }
+                if l.hasPrefix("#") {
+                    while l.hasPrefix("#") { l.removeFirst() }
+                    if l.hasPrefix(" ") { l.removeFirst() }
+                }
+                return l
+            }
+            .joined(separator: "\n")
+        return (try? AttributedString(
+            markdown: cleaned,
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        )) ?? AttributedString(cleaned)
     }
 }
 

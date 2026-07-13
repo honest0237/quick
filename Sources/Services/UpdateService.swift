@@ -1,5 +1,14 @@
 import AppKit
 
+/// 릴리스(패치로그) 한 건
+struct ReleaseInfo: Identifiable {
+    let id = UUID()
+    let version: String   // "1.2.0"
+    let date: String      // "2026-07-13"
+    let notes: String     // 릴리스 노트(markdown)
+    let url: URL?
+}
+
 /// GitHub Releases 기반 업데이트 확인 (인앱 알림 + 중앙 링크).
 /// 자동 설치는 하지 않고, 새 버전이 있으면 릴리스 페이지로 안내한다.
 @MainActor
@@ -12,6 +21,8 @@ final class UpdateService: ObservableObject {
 
     @Published private(set) var latestVersion: String?
     @Published private(set) var releaseURL: URL?
+    @Published private(set) var releases: [ReleaseInfo] = []
+    @Published private(set) var isLoadingReleases = false
 
     var currentVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
@@ -44,6 +55,36 @@ final class UpdateService: ObservableObject {
             Task { @MainActor in
                 if let version { self.latestVersion = version }
                 if let page { self.releaseURL = page }
+                completion?()
+            }
+        }.resume()
+    }
+
+    /// 전체 릴리스 목록(패치로그) 조회 — 버전 클릭 시 사용.
+    func fetchReleases(completion: (() -> Void)? = nil) {
+        guard let url = URL(string: "https://api.github.com/repos/\(owner)/\(repo)/releases?per_page=20") else {
+            completion?(); return
+        }
+        isLoadingReleases = true
+        var req = URLRequest(url: url, timeoutInterval: 10)
+        req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+
+        URLSession.shared.dataTask(with: req) { data, _, _ in
+            var parsed: [ReleaseInfo] = []
+            if let data,
+               let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                for r in arr {
+                    let tag = (r["tag_name"] as? String) ?? ""
+                    let version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
+                    let notes = (r["body"] as? String) ?? ""
+                    let date = String((r["published_at"] as? String ?? "").prefix(10))
+                    let page = (r["html_url"] as? String).flatMap { URL(string: $0) }
+                    parsed.append(ReleaseInfo(version: version, date: date, notes: notes, url: page))
+                }
+            }
+            Task { @MainActor in
+                self.releases = parsed
+                self.isLoadingReleases = false
                 completion?()
             }
         }.resume()
