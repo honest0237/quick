@@ -26,6 +26,7 @@ class FileWatcherService {
     private var knownFileNames: Set<String> = []
     private var processedFiles: Set<String> = []
     private var isDedicatedScreenshotDir = false   // 전용 폴더면 확장자만으로 감지(로케일 무관)
+    private let watchQueue = DispatchQueue(label: "com.screencapture.app.filewatch")  // 직렬 — Set 접근 직렬화
 
     private init() {}
 
@@ -52,7 +53,7 @@ class FileWatcherService {
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fd,
             eventMask: .write,
-            queue: .global(qos: .userInitiated)
+            queue: watchQueue   // 직렬 큐 → 이벤트 핸들러가 자기 자신과 동시 실행되지 않음
         )
 
         source.setEventHandler { [weak self] in
@@ -136,14 +137,17 @@ class FileWatcherService {
     // MARK: - 헬퍼
 
     private func isScreenshotFile(_ name: String) -> Bool {
+        Self.matchesScreenshot(name, dedicated: isDedicatedScreenshotDir)
+    }
+
+    /// 스크린샷 파일 판별 (테스트 가능한 순수 함수).
+    /// dedicated=전용 폴더면 이미지 확장자만으로 충분(모든 언어). 아니면 파일명 패턴도 요구.
+    static func matchesScreenshot(_ name: String, dedicated: Bool) -> Bool {
         let lower = name.lowercased()
         let extensions = ["png", "jpg", "jpeg", "tiff", "heic"]
         guard extensions.contains(where: { lower.hasSuffix($0) }) else { return false }
+        if dedicated { return true }
 
-        // 전용 스크린샷 폴더면 확장자만으로 충분(모든 언어에서 동작).
-        if isDedicatedScreenshotDir { return true }
-
-        // Desktop/홈 등 폴백일 때만 파일명 패턴 요구 — 주요 언어 커버
         let patterns = [
             "스크린샷", "화면 기록",                         // 한국어
             "screenshot", "screen shot", "cleanshot",       // 영어 / CleanShot

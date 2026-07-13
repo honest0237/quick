@@ -97,7 +97,8 @@ final class UpdateService: ObservableObject {
     }
 
     /// "1.2.0" > "1.1.0" 시맨틱 비교 (pre-release 태그 "1.2.0-beta"도 안전하게 처리)
-    static func isNewer(_ a: String, than b: String) -> Bool {
+    /// 순수 함수 — 액터 격리 불필요(테스트 가능하도록 nonisolated)
+    nonisolated static func isNewer(_ a: String, than b: String) -> Bool {
         func components(_ s: String) -> [Int] {
             s.split(separator: ".").map { comp in
                 Int(comp.prefix(while: { $0.isNumber })) ?? 0   // "0-beta" → 0

@@ -1,5 +1,7 @@
 # 빌드 산출물
 build/
+.build/
+Package.resolved
 *.dmg
 
 # macOS

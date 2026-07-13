@@ -78,7 +78,15 @@ if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
   die "릴리스 $TAG 가 이미 존재합니다. 버전을 올리세요."
 fi
 
-# ── 2) 빌드 ──────────────────────────────────────────────────
+# ── 2) 테스트 게이트 (빨간불이면 배포 중단) ──────────────────
+step "테스트 (swift test)"
+if command -v swift >/dev/null 2>&1; then
+  ( cd "$PROJECT_DIR" && swift test 2>&1 | tail -3 ) || die "테스트 실패 — 배포 중단"
+else
+  echo "  ⚠ swift 없음 — 테스트 건너뜀"
+fi
+
+# ── 3) 빌드 ──────────────────────────────────────────────────
 step "빌드"
 "$PROJECT_DIR/build.sh" direct >/dev/null
 [ -d "$APP" ] || die "빌드 산출물이 없습니다: $APP"
