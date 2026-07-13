@@ -34,6 +34,60 @@ final class ScreenshotMemory: ObservableObject {
         }
     }
 
+    // MARK: - 백필 (설치 전부터 있던 기존 스샷도 색인 → 설치 즉시 검색 가능)
+
+    private var isBackfilling = false
+
+    /// 감시 폴더의 기존 스샷을 최신순으로 색인. 백그라운드·직렬·저우선순위.
+    func backfillExisting(limit: Int = 300) {
+        guard !isBackfilling else { return }
+        let dir = FileWatcherService.shared.screenshotDirectory
+        let dedicated = FileWatcherService.isDedicated(dir)
+        let indexedPaths = Set(entries.map { $0.path })
+        let urls = (try? FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles])) ?? []
+        let candidates = urls
+            .filter { FileWatcherService.matchesScreenshot($0.lastPathComponent, dedicated: dedicated) }
+            .filter { !indexedPaths.contains($0.path) }
+            .sorted { modDate($0) > modDate($1) }
+            .prefix(limit)
+            .map { $0 }
+        guard !candidates.isEmpty else { return }
+        isBackfilling = true
+        processBackfill(candidates, done: 0)
+    }
+
+    private func modDate(_ url: URL) -> Date {
+        (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+    }
+
+    private func processBackfill(_ queue: [URL], done: Int) {
+        guard let url = queue.first else {         // 완료
+            entries.sort { $0.date > $1.date }     // 최신순 정렬
+            persist()
+            isBackfilling = false
+            return
+        }
+        let rest = Array(queue.dropFirst())
+        let date = modDate(url)
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let image = NSImage(contentsOfFile: url.path)   // 저우선순위에서 디코드
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard let image, !self.entries.contains(where: { $0.path == url.path }) else {
+                    self.processBackfill(rest, done: done); return
+                }
+                OCRService.recognizeText(in: image) { text in
+                    let ocr = text ?? ""
+                    self.entries.append(MemoryEntry(path: url.path, date: date,
+                        title: Self.makeTitle(from: ocr, fallback: url.lastPathComponent), text: ocr))
+                    if (done + 1) % 5 == 0 { self.persist() }    // 자주 저장(중단돼도 진행분 유지)
+                    self.processBackfill(rest, done: done + 1)   // 직렬 진행
+                }
+            }
+        }
+    }
+
     // MARK: - 검색
 
     /// 존재하는 파일 중, 모든 토큰이 (제목+OCR+파일명)에 포함되는 항목 (최신순)

@@ -164,7 +164,7 @@ class FileWatcherService {
     }
 
     /// 전용 스크린샷 폴더 여부(일반 폴더면 이름 패턴도 요구해 오탐 방지)
-    private static func isDedicated(_ dir: URL) -> Bool {
+    static func isDedicated(_ dir: URL) -> Bool {
         let home = FileManager.default.homeDirectoryForCurrentUser
         var common = [home.standardizedFileURL.path]
         for sub in ["Desktop", "Documents", "Downloads", "Pictures"] {

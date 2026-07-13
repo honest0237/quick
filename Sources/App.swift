@@ -31,6 +31,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         FileWatcherService.shared.startWatching()
         registerGlobalHotKey()
 
+        // 기존 스샷 백필 색인 (설치 즉시 검색 가능하도록, 백그라운드)
+        ScreenshotMemory.shared.backfillExisting()
+
         // 실행 시 업데이트 확인 → 새 버전 있으면 메뉴 갱신
         Task { @MainActor in
             UpdateService.shared.checkForUpdates { [weak self] in self?.rebuildMenu() }
