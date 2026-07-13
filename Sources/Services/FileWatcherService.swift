@@ -25,6 +25,7 @@ class FileWatcherService {
     private(set) var watchedDir: URL?
     private var knownFileNames: Set<String> = []
     private var processedFiles: Set<String> = []
+    private var isDedicatedScreenshotDir = false   // 전용 폴더면 확장자만으로 감지(로케일 무관)
 
     private init() {}
 
@@ -33,7 +34,8 @@ class FileWatcherService {
 
         let dir = getScreenshotDirectory()
         watchedDir = dir
-        qlog("감시 디렉토리: \(dir.path)")
+        isDedicatedScreenshotDir = Self.isDedicated(dir)
+        qlog("감시 디렉토리: \(dir.path) (전용: \(isDedicatedScreenshotDir))")
 
         // 기존 파일명만 캐싱 (속성 읽지 않음 — 빠름)
         let files = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
@@ -97,21 +99,22 @@ class FileWatcherService {
 
     // MARK: - 스크린샷 처리
 
-    private func handleNewScreenshot(at url: URL) {
-        qlog("처리: \(url.lastPathComponent)")
+    private func handleNewScreenshot(at url: URL, attempt: Int = 0) {
+        qlog("처리: \(url.lastPathComponent) (시도 \(attempt))")
 
-        guard let image = NSImage(contentsOf: url) else {
-            qlog("로드 실패, 0.5초 후 재시도")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                guard let image = NSImage(contentsOf: url) else {
-                    qlog("최종 실패: \(url.path)")
-                    return
-                }
-                self.processImage(image, url: url)
-            }
+        // 큰/느린 스크린샷(4K·레티나)은 아직 쓰는 중일 수 있음 → 최대 6회(총 ~3초) 재시도
+        if let image = NSImage(contentsOf: url), image.size.width > 0, image.size.height > 0 {
+            processImage(image, url: url)
             return
         }
-        processImage(image, url: url)
+        guard attempt < 6 else {
+            qlog("최종 실패: \(url.path)")
+            return
+        }
+        let delay = 0.3 + Double(attempt) * 0.4
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            self?.handleNewScreenshot(at: url, attempt: attempt + 1)
+        }
     }
 
     private func processImage(_ image: NSImage, url: URL) {
@@ -134,10 +137,35 @@ class FileWatcherService {
 
     private func isScreenshotFile(_ name: String) -> Bool {
         let lower = name.lowercased()
-        let patterns = ["스크린샷", "screenshot", "screen shot", "cleanshot"]
-        let extensions = ["png", "jpg", "jpeg", "tiff"]
-        return patterns.contains(where: { lower.contains($0) })
-            && extensions.contains(where: { lower.hasSuffix($0) })
+        let extensions = ["png", "jpg", "jpeg", "tiff", "heic"]
+        guard extensions.contains(where: { lower.hasSuffix($0) }) else { return false }
+
+        // 전용 스크린샷 폴더면 확장자만으로 충분(모든 언어에서 동작).
+        if isDedicatedScreenshotDir { return true }
+
+        // Desktop/홈 등 폴백일 때만 파일명 패턴 요구 — 주요 언어 커버
+        let patterns = [
+            "스크린샷", "화면 기록",                         // 한국어
+            "screenshot", "screen shot", "cleanshot",       // 영어 / CleanShot
+            "スクリーンショット", "スクリーン",                // 일본어
+            "截屏", "截图", "屏幕快照", "螢幕截圖", "截圖",     // 중국어(간체·번체)
+            "bildschirmfoto",                               // 독일어
+            "capture", "capture d",                         // 프랑스어 / 일반
+            "captura",                                      // 스페인어 / 포르투갈어
+            "schermata",                                    // 이탈리아어
+            "снимок экрана",                                // 러시아어
+        ]
+        return patterns.contains { lower.contains($0) }
+    }
+
+    /// 전용 스크린샷 폴더 여부(일반 폴더면 이름 패턴도 요구해 오탐 방지)
+    private static func isDedicated(_ dir: URL) -> Bool {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        var common = [home.standardizedFileURL.path]
+        for sub in ["Desktop", "Documents", "Downloads", "Pictures"] {
+            common.append(home.appendingPathComponent(sub).standardizedFileURL.path)
+        }
+        return !common.contains(dir.standardizedFileURL.path)
     }
 
     var screenshotDirectory: URL {

@@ -17,6 +17,13 @@ PLIST="$PROJECT_DIR/Resources/Info.plist"
 APP="$PROJECT_DIR/build/Quick.app"
 PB=/usr/libexec/PlistBuddy
 
+# ── 공증 준비 (나중에 Apple Developer 계정 생기면 아래 2개만 설정하면 자동 실행) ──
+#   export QUICK_SIGN_ID="Developer ID Application: 이름 (TEAMID)"
+#   export QUICK_NOTARY_PROFILE="notary"   # xcrun notarytool store-credentials 로 만든 키체인 프로파일
+# 둘 다 비어있으면 지금처럼 ad-hoc 서명(지인 배포용, xattr -cr 필요).
+SIGN_ID="${QUICK_SIGN_ID:-}"
+NOTARY_PROFILE="${QUICK_NOTARY_PROFILE:-}"
+
 step() { printf "\n\033[1;34m▶ %s\033[0m\n" "$1"; }
 die()  { printf "\033[1;31m✖ %s\033[0m\n" "$1" >&2; exit 1; }
 
@@ -63,7 +70,7 @@ else
 fi
 
 TAG="v$VERSION"
-DMG_NAME="Quick_${VERSION}_aarch64.dmg"
+DMG_NAME="Quick_${VERSION}_universal.dmg"
 DMG_PATH="$PROJECT_DIR/$DMG_NAME"
 
 # 태그 중복 방지
@@ -85,15 +92,29 @@ cp -R "$APP" "$STAGE/root/Quick.app"
 chmod -R u+rwX,go+rX,go-w "$STAGE/root/Quick.app"
 chmod 755 "$STAGE/root/Quick.app/Contents/MacOS/Quick"
 xattr -cr "$STAGE/root/Quick.app"
-codesign --force --deep --sign - \
-  --entitlements "$STAGE/root/Quick.app/Contents/Resources/entitlements.plist" \
-  "$STAGE/root/Quick.app"
+ENT="$STAGE/root/Quick.app/Contents/Resources/entitlements.plist"
+if [ -n "$SIGN_ID" ]; then
+  # 정식 서명 (Developer ID) — 공증 가능
+  codesign --force --deep --options runtime --timestamp --sign "$SIGN_ID" --entitlements "$ENT" "$STAGE/root/Quick.app"
+  echo "  → Developer ID 서명: $SIGN_ID"
+else
+  # ad-hoc 서명 (지인 배포용, 받는 사람이 xattr -cr 필요)
+  codesign --force --deep --sign - --entitlements "$ENT" "$STAGE/root/Quick.app"
+fi
 codesign --verify --deep --strict "$STAGE/root/Quick.app" || die "서명 검증 실패"
 ln -sf /Applications "$STAGE/root/Applications"
 rm -f "$DMG_PATH"
 hdiutil create -volname "Quick $VERSION" -srcfolder "$STAGE/root" \
   -fs HFS+ -format UDZO -imagekey zlib-level=9 -ov "$DMG_PATH" >/dev/null
 echo "  → $DMG_NAME ($(du -h "$DMG_PATH" | cut -f1))"
+
+# (선택) 공증 + staple — SIGN_ID 와 NOTARY_PROFILE 둘 다 설정된 경우에만
+if [ -n "$SIGN_ID" ] && [ -n "$NOTARY_PROFILE" ]; then
+  step "공증 (notarize + staple)"
+  xcrun notarytool submit "$DMG_PATH" --keychain-profile "$NOTARY_PROFILE" --wait
+  xcrun stapler staple "$DMG_PATH"
+  echo "  → 공증 완료 (경고 없이 더블클릭 설치 가능)"
+fi
 
 # ── 4) 릴리스 노트 준비 ──────────────────────────────────────
 step "릴리스 노트 준비"

@@ -96,10 +96,14 @@ final class UpdateService: ObservableObject {
         NSWorkspace.shared.open(releaseURL ?? fallback)
     }
 
-    /// "1.2.0" > "1.1.0" 시맨틱 비교
+    /// "1.2.0" > "1.1.0" 시맨틱 비교 (pre-release 태그 "1.2.0-beta"도 안전하게 처리)
     static func isNewer(_ a: String, than b: String) -> Bool {
-        let pa = a.split(separator: ".").map { Int($0) ?? 0 }
-        let pb = b.split(separator: ".").map { Int($0) ?? 0 }
+        func components(_ s: String) -> [Int] {
+            s.split(separator: ".").map { comp in
+                Int(comp.prefix(while: { $0.isNumber })) ?? 0   // "0-beta" → 0
+            }
+        }
+        let pa = components(a), pb = components(b)
         for i in 0..<max(pa.count, pb.count) {
             let x = i < pa.count ? pa[i] : 0
             let y = i < pb.count ? pb[i] : 0

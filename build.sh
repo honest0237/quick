@@ -29,7 +29,7 @@ done < <(find "$SOURCES_DIR" -name "*.swift" -print0 | sort -z)
 echo "📝 Source files:"
 for f in "${SWIFT_FILES[@]}"; do echo "   $(basename "$f")"; done
 
-# 컴파일 플래그
+# 공통 컴파일 플래그 (아키텍처/출력은 아래에서 지정)
 COMPILE_FLAGS=(
     -parse-as-library
     -O
@@ -38,8 +38,6 @@ COMPILE_FLAGS=(
     -framework CoreGraphics
     -framework Carbon
     -framework Vision
-    -target arm64-apple-macos13.0
-    -o "$BUILD_DIR/$APP_NAME"
 )
 
 # App Store vs Direct 빌드 분기
@@ -52,14 +50,16 @@ else
     echo "📦 Build type: Direct Sale (No sandbox)"
 fi
 
-# 컴파일
-echo "⚙️  Compiling..."
-swiftc "${COMPILE_FLAGS[@]}" "${SWIFT_FILES[@]}"
-
-if [ $? -ne 0 ]; then
-    echo "❌ Compilation failed!"
-    exit 1
-fi
+# 유니버설 컴파일: arm64 + x86_64 각각 빌드 후 lipo 병합 (인텔 맥도 실행 가능)
+# set -e 가 swiftc 실패 시 스크립트를 중단하므로 별도 $? 체크 불필요
+echo "⚙️  Compiling (arm64)..."
+swiftc "${COMPILE_FLAGS[@]}" -target arm64-apple-macos13.0  -o "$BUILD_DIR/$APP_NAME-arm64"  "${SWIFT_FILES[@]}"
+echo "⚙️  Compiling (x86_64)..."
+swiftc "${COMPILE_FLAGS[@]}" -target x86_64-apple-macos13.0 -o "$BUILD_DIR/$APP_NAME-x86_64" "${SWIFT_FILES[@]}"
+echo "🔗 Merging universal binary..."
+lipo -create "$BUILD_DIR/$APP_NAME-arm64" "$BUILD_DIR/$APP_NAME-x86_64" -output "$BUILD_DIR/$APP_NAME"
+rm -f "$BUILD_DIR/$APP_NAME-arm64" "$BUILD_DIR/$APP_NAME-x86_64"
+echo "   → $(lipo -archs "$BUILD_DIR/$APP_NAME")"
 
 echo "✅ Compilation successful"
 

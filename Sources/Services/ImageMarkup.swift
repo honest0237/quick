@@ -76,8 +76,13 @@ enum ImageMarkup {
         guard var cg = rep.cgImage else { return nil }
         if let crop = cropRect {
             let clamped = crop.intersection(full)
-            if clamped.width >= 1, clamped.height >= 1, let cropped = cg.cropping(to: clamped) {
-                cg = cropped
+            if clamped.width >= 1, clamped.height >= 1 {
+                // crop은 캔버스와 같은 좌하단 원점. CGImage.cropping은 좌상단 원점이라 Y를 뒤집어 맞춤.
+                let flipped = CGRect(x: clamped.minX,
+                                     y: CGFloat(h) - clamped.maxY,
+                                     width: clamped.width,
+                                     height: clamped.height)
+                if let cropped = cg.cropping(to: flipped) { cg = cropped }
             }
         }
         let outSize = NSSize(width: cg.width, height: cg.height)
