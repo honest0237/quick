@@ -44,13 +44,17 @@ final class UpdateService: ObservableObject {
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
 
         URLSession.shared.dataTask(with: req) { data, _, _ in
-            var version: String?
-            var page: URL?
+            // let 로 확정(불변) — Task가 var를 캡처하면 엄격한 동시성 검사에서 에러
+            let version: String?
+            let page: URL?
             if let data,
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let tag = json["tag_name"] as? String {
                 version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
                 page = (json["html_url"] as? String).flatMap { URL(string: $0) }
+            } else {
+                version = nil
+                page = nil
             }
             Task { @MainActor in
                 if let version { self.latestVersion = version }
@@ -82,8 +86,9 @@ final class UpdateService: ObservableObject {
                     parsed.append(ReleaseInfo(version: version, date: date, notes: notes, url: page))
                 }
             }
+            let result = parsed   // 불변 스냅샷 — Task 캡처용
             Task { @MainActor in
-                self.releases = parsed
+                self.releases = result
                 self.isLoadingReleases = false
                 completion?()
             }
