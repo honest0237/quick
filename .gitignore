@@ -1,0 +1,10 @@
+# 빌드 산출물
+build/
+*.dmg
+
+# macOS
+.DS_Store
+
+# 편집기
+.vscode/
+*.xcuserstate
