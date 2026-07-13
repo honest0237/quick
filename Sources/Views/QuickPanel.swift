@@ -61,7 +61,7 @@ class QuickPanelController {
 
         let settings = QuickSettings.shared
         let direction = settings.panelDirection
-        let screen = NSScreen.main ?? NSScreen.screens.first!
+        let screen = Self.activeScreen()   // 커서가 있는 화면(멀티모니터 대응)
         let visible = screen.visibleFrame
 
         let (panelW, panelH) = panelSize(direction: direction, screen: visible)
@@ -89,7 +89,7 @@ class QuickPanelController {
             panel.animator().setFrame(endFrame, display: true)
             panel.animator().alphaValue = 1.0
         }, completionHandler: { [weak self] in
-            self?.isAnimating = false
+            Task { @MainActor in self?.isAnimating = false }
         })
     }
 
@@ -106,11 +106,19 @@ class QuickPanelController {
         }, completionHandler: { [weak self] in
             panel.orderOut(nil)
             panel.alphaValue = 1.0
-            self?.isAnimating = false
+            Task { @MainActor in self?.isAnimating = false }
         })
     }
 
     // MARK: - 프레임 계산
+
+    /// 현재 커서가 위치한 화면 (없으면 주 화면)
+    static func activeScreen() -> NSScreen {
+        let mouse = NSEvent.mouseLocation
+        return NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) }
+            ?? NSScreen.main
+            ?? NSScreen.screens.first!
+    }
 
     private func panelSize(direction: PanelDirection, screen: NSRect) -> (CGFloat, CGFloat) {
         let settings = QuickSettings.shared

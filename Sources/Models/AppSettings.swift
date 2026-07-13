@@ -31,7 +31,6 @@ class AppSettings: ObservableObject {
     @AppStorage("showPreview") var showPreview: Bool = true
     @AppStorage("playCaptureSound") var playCaptureSound: Bool = true
     @AppStorage("copyToClipboard") var copyToClipboard: Bool = true
-    @AppStorage("saveToFile") var saveToFile: Bool = true
 
     // 단축키 설정 (기본값)
     @AppStorage("hotkeyFullScreen") var hotkeyFullScreen: String = "cmd+shift+3"
