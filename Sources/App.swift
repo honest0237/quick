@@ -35,6 +35,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             UpdateService.shared.checkForUpdates { [weak self] in self?.rebuildMenu() }
         }
+
+        // 첫 실행이면 안내 창 1회 표시
+        if !UserDefaults.standard.bool(forKey: "didShowWelcome") {
+            UserDefaults.standard.set(true, forKey: "didShowWelcome")
+            WelcomeWindowController.present()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -82,6 +88,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "전체 삭제", action: #selector(clearAll), keyEquivalent: "")
         menu.addItem(withTitle: "저장 폴더 열기", action: #selector(openFolder), keyEquivalent: "")
         menu.addItem(NSMenuItem.separator())
+        menu.addItem(withTitle: "Quick 소개…", action: #selector(showWelcome), keyEquivalent: "")
         menu.addItem(withTitle: "업데이트 확인…", action: #selector(checkForUpdates), keyEquivalent: "")
         menu.addItem(withTitle: "종료", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
@@ -98,6 +105,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func openFolder() {
         NSWorkspace.shared.open(FileWatcherService.shared.screenshotDirectory)
+    }
+
+    @objc func showWelcome() {
+        WelcomeWindowController.present()
     }
 
     @objc func openReleasePage() {

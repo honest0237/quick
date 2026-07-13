@@ -97,13 +97,6 @@ class QuickPanelController {
         guard !isAnimating, let panel = panel else { return }
         isAnimating = true
 
-        let settings = QuickSettings.shared
-        let direction = settings.panelDirection
-        let screen = NSScreen.main ?? NSScreen.screens.first!
-        let visible = screen.visibleFrame
-        let (panelW, panelH) = panelSize(direction: direction, screen: visible)
-        let offFrame = offscreenFrame(direction: direction, screen: visible, w: panelW, h: panelH)
-
         // 조용하게 페이드 아웃
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.3
@@ -458,7 +451,7 @@ struct QuickPanelView: View {
                 .multilineTextAlignment(.center)
                 .foregroundColor(.secondary)
                 .font(.callout)
-            Text("⌘⇧4 스크린샷 · 드래그&드롭")
+            Text("⌘⇧4 캡처 · 드래그 · \(QuickSettings.shared.toggleHotkey.label) 열고닫기")
                 .font(.caption)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 4)
