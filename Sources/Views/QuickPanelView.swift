@@ -11,6 +11,7 @@ struct QuickPanelView: View {
     @State private var showChangelog = false
     @State private var searchText = ""
     @State private var searchResults: [SearchResult] = []
+    @State private var memoryResults: [MemoryEntry] = []   // 내 스샷 메모리 검색(OCR)
     @State private var isSearching = false
     @State private var searchTask: DispatchWorkItem?
 
@@ -180,11 +181,16 @@ struct QuickPanelView: View {
 
     private func performSearch(query: String) {
         searchTask?.cancel()
-        guard !query.trimmingCharacters(in: .whitespaces).isEmpty else {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else {
             searchResults = []
+            memoryResults = []
             isSearching = false
             return
         }
+        // 내 스샷 메모리(OCR)는 로컬·즉시 검색
+        memoryResults = ScreenshotMemory.shared.search(trimmed)
+        // 파일 검색(mdfind)은 디바운스
         isSearching = true
         let task = DispatchWorkItem { [query] in
             SearchService.shared.search(query: query) { results in
@@ -193,43 +199,48 @@ struct QuickPanelView: View {
             }
         }
         searchTask = task
-        // 200ms 디바운스 — 타이핑 중 불필요한 검색 방지
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: task)
     }
 
     private var searchResultsView: some View {
-        Group {
-            if isSearching {
-                VStack {
-                    Spacer()
-                    ProgressView()
-                        .scaleEffect(0.8)
-                    Text("검색 중...")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Spacer()
-                }
-            } else if searchResults.isEmpty {
-                VStack {
-                    Spacer()
-                    Image(systemName: "doc.questionmark")
-                        .font(.system(size: 36))
-                        .foregroundColor(.secondary.opacity(0.5))
-                    Text("결과 없음")
-                        .font(.callout)
-                        .foregroundColor(.secondary)
-                    Spacer()
-                }
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 4) {
-                        ForEach(searchResults) { result in
-                            SearchResultRow(result: result)
-                        }
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 3) {
+                // 🧠 내 스크린샷 메모리 (OCR로 찾은 것) — 차별화 핵심, 최상단
+                if !memoryResults.isEmpty {
+                    Text("🧠 내 스크린샷에서 (\(memoryResults.count))")
+                        .font(.caption).foregroundColor(.secondary)
+                        .padding(.horizontal, 8).padding(.top, 4)
+                    ForEach(memoryResults) { entry in
+                        MemorySearchRow(entry: entry)
                     }
-                    .padding(8)
+                }
+
+                // 파일 검색 (mdfind)
+                if isSearching {
+                    HStack(spacing: 6) {
+                        ProgressView().scaleEffect(0.6)
+                        Text("파일 검색 중…").font(.caption2).foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity).padding(6)
+                } else if !searchResults.isEmpty {
+                    Text("파일").font(.caption).foregroundColor(.secondary)
+                        .padding(.horizontal, 8).padding(.top, 6)
+                    ForEach(searchResults) { result in
+                        SearchResultRow(result: result)
+                    }
+                }
+
+                // 둘 다 비면 결과 없음
+                if memoryResults.isEmpty && searchResults.isEmpty && !isSearching {
+                    VStack(spacing: 8) {
+                        Image(systemName: "doc.questionmark")
+                            .font(.system(size: 32)).foregroundColor(.secondary.opacity(0.5))
+                        Text("결과 없음").font(.callout).foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity).padding(.top, 44)
                 }
             }
+            .padding(8)
         }
     }
 

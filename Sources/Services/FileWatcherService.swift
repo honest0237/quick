@@ -126,6 +126,7 @@ class FileWatcherService {
 
         Task { @MainActor in
             ScreenshotStore.shared.add(image: image, fileURL: url)
+            ScreenshotMemory.shared.record(image: image, path: url.path)   // OCR 색인(검색되는 메모리)
             qlog("패널 추가 완료")
         }
 
