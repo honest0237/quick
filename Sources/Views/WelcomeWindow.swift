@@ -44,7 +44,7 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
 struct WelcomeView: View {
     var onStart: () -> Void
 
-    private var hotkey: String { QuickSettings.shared.toggleHotkey.label }
+    private var hotkey: String { AppSettings.shared.toggleHotkey.label }
 
     var body: some View {
         VStack(spacing: 0) {

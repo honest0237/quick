@@ -76,7 +76,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(NSMenuItem.separator())
         }
 
-        menu.addItem(withTitle: "Quick 패널 열기/닫기  \(QuickSettings.shared.toggleHotkey.label)", action: #selector(togglePanel), keyEquivalent: "")
+        menu.addItem(withTitle: "Quick 패널 열기/닫기  \(AppSettings.shared.toggleHotkey.label)", action: #selector(togglePanel), keyEquivalent: "")
         menu.addItem(NSMenuItem.separator())
 
         // 로그인 시 자동 실행
@@ -179,7 +179,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hotKeyID.signature = OSType(0x51554943) // "QUIC"
         hotKeyID.id = 1
 
-        let hk = QuickSettings.shared.toggleHotkey
+        let hk = AppSettings.shared.toggleHotkey
         let status = RegisterEventHotKey(hk.keyCode, hk.modifiers, hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
         if status != noErr {
             NSLog("[Quick] 글로벌 단축키 등록 실패: %d", status)
